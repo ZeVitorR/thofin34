@@ -13,7 +13,7 @@ A rotina automatiza a criação de registros financeiros a partir de uma nota fi
 ## 🛠️ Detalhes Técnicos
 
 ### Funções Principais
-* **`THOFIN34`**: Ponto de entrada que inicializa variáveis privadas e dispara o fluxo de criação da tabela temporária e do browser.
+* **`THOFIN34`**: função que inicializa variáveis privadas e dispara o fluxo de criação da tabela temporária e do browser.
 * **`CriaTemp`**: Instancia a classe `FWTemporaryTable` para gerenciar os dados em memória sem afetar o banco de dados antes da confirmação.
 * **`GeraBrowser`**: Configura o objeto `FWMBrowse` com edição de células (`SetEditCell`) e define a interface visual com painéis de totalização utilizando fontes customizadas.
 * **`realizaSalvamento`**: Processa a gravação definitiva utilizando a rotina automática `FINA040` (`MsExecAuto`) dentro de um bloco de transação segura.
