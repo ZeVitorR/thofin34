@@ -1,0 +1,557 @@
+#INCLUDE "TOTVS.CH"
+#Include "TopConn.ch"
+#INCLUDE "PROTHEUS.CH"
+
+/*/{Protheus.doc} THOFIN34
+	Ira gerar um browser editavel para gerar a  inclusao de dados para a tabela SE1 - Contas a Receber      
+	@type user function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+/*/
+User Function THOFIN34()
+	Private dVencimento                         as date
+	Private aColunasTabela    := {}             as array
+	Private aColunasBrowser   := {}             as array
+	Private aValoresTitulos   := {}             as array
+	Private nQuantidadeParcelas                 as numeric
+	Private nValor                              as numeric
+	Private nEntrada                            as numeric
+	Private nTotParcelas                        as numeric
+	Private nTotalParcelas := 0                 as numeric
+	Private nTotalPedido   := 0                 as numeric
+	Private cTipoFV                             as character
+	Private cDocumentoSaida                     as character
+	Private cPrefixo                            as character
+	Private cSecuritizadora                     as character
+	Private cParceiro                           as character
+	Private cTabelaTemporaria := GetNextAlias() as character
+	Private cNomeTabelaTemporaria 				as character
+	Private cIndiceParcela       				as character
+
+
+	If !(Perguntas())
+		Return
+	EndIf
+
+	CriaTemp()
+
+	GeraBrowser()
+ 
+Return
+
+/*/{Protheus.doc} CriaTemp
+	Funcao para criar e adicionar dados na tabela temporaria
+	@type Static function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+/*/
+Static Function CriaTemp()
+
+	defineColunas("Temp")
+
+	oTemptable := FWTemporaryTable():New(cTabelaTemporaria)
+    oTemptable:SetFields(aColunasTabela)
+    oTempTable:Create()
+	cNomeTabelaTemporaria := oTempTable:GetTableNameForQuery()
+
+	adicionaDados()
+	
+Return 
+
+/*/{Protheus.doc} adicionaDados
+	Funcao para adicionar os dados na Tabela Temporaria
+	@type Static Function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+/*/
+Static Function adicionaDados()
+	Local nContador as numeric
+	Local dVencAtual as date
+
+	for nContador := 1 to nQuantidadeParcelas
+		dVencAtual := IF(nContador == 1, dVencimento, MonthSum(dVencimento,nContador-1))
+		DbSelectArea(cTabelaTemporaria)
+		Reclock(cTabelaTemporaria,.T.)
+			(cTabelaTemporaria)->FILIAL         := xFilial( 'SE1' )
+			(cTabelaTemporaria)->PREFIXO        := cPrefixo
+			(cTabelaTemporaria)->DOCUMENTO      := cDocumentoSaida
+			(cTabelaTemporaria)->PARCELA        := Strzero(nContador,3)
+			(cTabelaTemporaria)->FIXVAR         := cTipoFV
+			(cTabelaTemporaria)->INDICE         := cIndiceParcela
+			(cTabelaTemporaria)->VENCIMENTO     := dVencAtual
+			(cTabelaTemporaria)->VALOR          := nValor
+			(cTabelaTemporaria)->SECUR          := cSecuritizadora
+			(cTabelaTemporaria)->PARCE          := cParceiro
+		MsUnlock()
+	next
+Return 
+
+/*/{Protheus.doc} defineColunas
+	Define as colunas da tabela temporário ou do browser
+	@type  Static Function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+	@param cTipoFV, character, contem o tipo em que será definido a coluna do browser: Temp | Browser
+/*/
+Static Function defineColunas(cTipoFV as character)
+	Local nAtual                                 as numeric
+	Local nTamFil := Len(AvKey("","E1_FILIAL"))  as numeric
+	Local nTamPfx := Len(AvKey("","E1_PREFIXO")) as numeric
+	Local nTamDoc := Len(AvKey("","E1_NUM"))     as numeric
+	Local nTamPcl := Len(AvKey("","E1_PARCELA")) as numeric
+	Local nTamFxv := 1					 		 as numeric
+	Local nTamVct := 8                           as numeric
+	Local nTamVlr := 12                          as numeric
+	Local nTamSec := Len(AvKey("","E1_ZZSECUR")) as numeric
+	Local nTamPar := Len(AvKey("","E1_ZZPARCE")) as numeric
+	Local nTamIdc := 20                          as numeric
+
+	IF ( cTipoFV == "Temp")
+		aadd(aColunasTabela, {"FILIAL"    , "C", nTamFil, 00})
+		aadd(aColunasTabela, {"PREFIXO"   , "C", nTamPfx, 00})
+		aadd(aColunasTabela, {"DOCUMENTO" , "C", nTamDoc, 00})
+		aadd(aColunasTabela, {"PARCELA"   , "C", nTamPcl, 00})
+		aadd(aColunasTabela, {"FIXVAR"    , "C", nTamFxv, 00})
+		aadd(aColunasTabela, {"INDICE"    , "C", nTamIdc, 00})
+		aadd(aColunasTabela, {"VENCIMENTO", "D", nTamVct, 00})
+		aadd(aColunasTabela, {"VALOR"     , "N", nTamVlr, 02})
+		aadd(aColunasTabela, {"SECUR"     , "C", nTamSec, 00})
+		aadd(aColunasTabela, {"PARCE"     , "C", nTamPar, 00})
+	ElseIf ( cTipoFV == "Browser")
+		For nAtual := 1 To Len(aColunasTabela)    
+            AAdd(aColunasBrowser,FWBrwColumn():New())
+            aColunasBrowser[Len(aColunasBrowser)]:SetType(aColunasTabela[nAtual][2])
+            aColunasBrowser[Len(aColunasBrowser)]:SetData( &("{||"+aColunasTabela[nAtual][1]+"}") )
+            aColunasBrowser[Len(aColunasBrowser)]:SetTitle(aColunasTabela[nAtual][1])
+			if(aColunasTabela[nAtual][2] == "N")
+            	aColunasBrowser[Len(aColunasBrowser)]:SetPicture("@E 999,999,999.99")
+			endif
+            aColunasBrowser[Len(aColunasBrowser)]:SetSize(aColunasTabela[nAtual][3])
+            aColunasBrowser[Len(aColunasBrowser)]:SetDecimal(aColunasTabela[nAtual][4])  
+            aColunasBrowser[Len(aColunasBrowser)]:SetAlign( IIf(aColunasTabela[nAtual][2] == "N",CONTROL_ALIGN_RIGHT, CONTROL_ALIGN_LEFT))     
+           	If (aColunasTabela[nAtual][1] $ 'VENCIMENTO|VALOR|SECUR|PARCE' )
+				aColunasBrowser[Len(aColunasBrowser)]:SetEdit(.T.)
+            	aColunasBrowser[Len(aColunasBrowser)]:SetReadVar(aColunasTabela[nAtual][1])        
+			EndIf 
+        Next nAtual       
+	EndIf
+Return
+
+/*/{Protheus.doc} GeraBrowser
+	funcao responsavel pela geracao do Browser
+	@type  Static Function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+/*/
+Static Function GeraBrowser()
+	Local oFontLog := TFont():New('Courier new',,-18,.T.)
+    Local aTamanho := MsAdvSize()
+    Local nJanLarg := aTamanho[5]
+    Local nJanAltu := aTamanho[6]
+	Private oDlgMk as object
+    Private oPanGd as object
+    Private oBrowse as object
+    Private cTituloEntrada := '' as character
+    Private cValorEntrada  := '' as character
+    Private cTituloParcela := '' as character
+    Private cValorParcela  := '' as character
+    Private cTituloProduto := '' as character
+    Private cValorProduto  := '' as character
+	Private cTituloPedido := '' as character
+    Private cValorPedido  := '' as character
+
+	defineColunas("Browser")
+
+	AtualizaValor("")
+	
+	DEFINE MSDIALOG oDlgMk TITLE '' FROM 000, 000  TO nJanAltu, nJanLarg COLORS 0, 16777215 PIXEL
+        
+        oPanGd := tPanel():New(001, 001, '', oDlgMk, , , , RGB(000,000,000), RGB(254,254,254), (nJanLarg/2)-1,     (nJanAltu/2 - 1))
+        oSayTituloEntrada := TSay():New(004, 250, {|| cTituloEntrada}, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayValorEntrada  := TSay():New(004, 350, {|| cValorEntrada }, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+		oSayTituloEntrada := TSay():New(004, 550, {|| cTituloPedido}, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayValorEntrada  := TSay():New(004, 650, {|| cValorPedido }, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayTituloParcela := TSay():New(015, 250, {|| cTituloParcela}, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayValorParcela  := TSay():New(015, 350, {|| cValorParcela }, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayTituloParcela := TSay():New(026, 250, {|| cTituloProduto}, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+        oSayValorParcela  := TSay():New(026, 350, {|| cValorProduto }, oDlgMk, "", oFontLog, , , , .T., , , (nJanLarg/2) - 6, 10, , , , , , .T., , )
+		//Criando o FWMarkBrowse
+        oBrowse := FWMBrowse():New()
+        oBrowse:SetAlias((cTabelaTemporaria))               
+        oBrowse:SetDescription("Geração de Titulos - Contas a Receber")
+        oBrowse:AddButton("Continuar",{|| salvaTitulos()},,3,,.F.)
+        oBrowse:AddButton("Cancelar", {|| oDlgMk:end() },,4,,.F.)
+        oBrowse:SetDataTable()
+        oBrowse:SetEditCell( .T., {|| AtualizaValor("Browser")} ) 
+        oBrowse:lHeaderClick := .F.
+        oBrowse:SetColumns(aColunasBrowser)
+        oBrowse:SetTemporary(.T.)
+        oBrowse:SetOwner(oPanGd)
+        oBrowse:DisableDetails()
+        //Ativando a janela
+        oBrowse:Activate() 
+    ACTIVATE MsDialog oDlgMk CENTERED
+    
+Return 
+
+/*/{Protheus.doc} salvaTitulos
+	Funcao responsavel pr chamar o salvamento do titulo e colocar a tela de carregamento para o usuário
+	@type  Static Function
+	@author José Vitor Rodrigues
+	@since 27/06/2025
+	@version 1.0
+/*/
+Static Function salvaTitulos()
+	FWMsgRun(, {|oSay| realizaSalvamento(oSay) }, "Processando", "Realizando o salvamento dos titulos")
+Return 
+
+
+
+/*/{Protheus.doc} realizaSalvamento
+	Funcao para a realização do salvamento dos dados contidos na tabela temporaria
+	@type  Static Function
+	@author José Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+/*/
+Static Function realizaSalvamento(oSay)
+	Local aVetSE1            as array
+	Local lsalvar            as logical
+	Local cCondicaoPagamento as character
+	Local cCodigoCliente     as character
+	Local cLojaCliente       as character
+	Local cTipo              as character
+
+	DbSelectArea(cTabelaTemporaria)
+	(cTabelaTemporaria)->(DbGoTop())
+
+	DbSelectArea("SF2")
+	SF2->(DbSetOrder(1))
+	SF2->(MsSeek(xFilial("SF2")+cDocumentoSaida+cPrefixo,.t.))
+
+	DbSelectArea("SD2")
+	SD2->(DbSetOrder(3))
+	SD2->(MsSeek(xFilial("SD2") + (cTabelaTemporaria)->DOCUMENTO + SF2->F2_SERIE))
+	cProduto := SD2->D2_COD
+	cPedido  := SD2->D2_PEDIDO
+
+	DbSelectArea("SC5")
+	SC5->(DbSetOrder(1))
+
+	DbSelectArea("SB1")
+	SB1->(DbSetOrder(1))
+
+	DbSelectArea("SA1")
+	SB1->(DbSetOrder(1))
+
+	DbSelectArea("SE1")
+   	SE1->(DbSetOrder(1))
+
+	DbSelectArea("SC6")
+   	SC6->(DbSetOrder(4))
+
+	cQuery := "SELECT C6_TES FROM "+retSQLName("SC6")+" WHERE C6_FILIAL = "+xFilial("SC6")+" AND C6_NUM = '"+cPedido+"' AND C6_TES = '534' "
+    TCQuery cQuery New Alias "C6VERI"
+
+	If !(C6VERI->(EOF()))
+		lsalvar := .T.
+	ELSEIF ! MsgYesNo("AVISO: a TES utilizada é diferente da 334, você deseja continuar?" , "Confirma?")
+        lsalvar := .F.    
+	ELSE
+		lsalvar := .T.
+    ENDIF
+	C6VERI->(dbCloseArea())
+	if lsalvar
+		if(nTotalPedido != nTotalParcelas)
+			alert("O valor total cadastrado está divergendo do valor cadastrado no pedido. Verifique e tente novamente!")
+		else
+			While !( (cTabelaTemporaria)->(EOF()) )
+				cFilialAtual    := (cTabelaTemporaria)->FILIAL
+				cPrefixo        := (cTabelaTemporaria)->PREFIXO
+				cTitulo         := (cTabelaTemporaria)->DOCUMENTO
+				cParcela        := (cTabelaTemporaria)->PARCELA
+				cFixVar         := (cTabelaTemporaria)->FIXVAR
+				dVencimento     := (cTabelaTemporaria)->VENCIMENTO
+				nValor          := (cTabelaTemporaria)->VALOR
+				cSecuritizadora := (cTabelaTemporaria)->SECUR
+				cParceiro       := (cTabelaTemporaria)->PARCE
+				dEmissao        := dDataBase
+				cTipo           := "NF "
+				cCliente        := SF2->F2_CLIENTE
+				cCodigoCliente  := SF2->F2_CLIENTE
+				cLoja           := SF2->F2_LOJA
+				cLojaCliente    := SF2->F2_LOJA
+				cCond           := SF2->F2_COND
+				cSerie          := SF2->F2_SERIE				
+				
+				SC5->(MsSeek(xFilial("SC5") + cPedido))
+				cMesigpm := SC5->C5_MESIGPM
+				cAnoigpm := SC5->C5_ANOIGPM
+				cZZIndic := SC5->C5_ZZINDIC
+				cCondicaoPagamento := SC5->C5_CONDPAG
+
+				SB1->(MsSeek(xFilial("SD2") + cProduto))
+				cEC05DB := SB1->B1_EC05DB
+				cEC05CR := SB1->B1_EC05CR
+				cDtIgpm := cAnoIgpm + cMesIgpm
+				cTipIgpm := 'M'
+				SA1->(MsSeek(xFilial("SA1") + cCliente))
+				cRazao := SA1->A1_NOME
+				cFanta := SA1->A1_NREDUZ
+
+				If !SE1->(MsSeek(cFilialAtual+cPrefixo+cTitulo+cParcela+cTipo))
+					aVetSE1 := {}
+					aadd(aVetSE1, {"E1_FILIAL" , FWxFilial("SE1"), Nil})
+					aadd(aVetSE1, {"E1_NUM"    , cTitulo, Nil})
+					aadd(aVetSE1, {"E1_PREFIXO", cPrefixo, Nil})
+					aadd(aVetSE1, {"E1_PARCELA", cParcela, Nil})
+					aadd(aVetSE1, {"E1_EMISSAO", dEmissao, Nil})
+					aadd(aVetSE1, {"E1_EMIS1"  , dEmissao, Nil})
+					aadd(aVetSE1, {"E1_TIPO"   , cTipo, Nil})
+					aadd(aVetSE1, {"E1_VENCTO" , dVencimento, Nil})
+					aadd(aVetSE1, {"E1_NATUREZ", '1101', Nil})
+					aadd(aVetSE1, {"E1_CLIENTE", cCliente, Nil})
+					aadd(aVetSE1, {"E1_LOJA"   , cLoja, Nil})
+					aadd(aVetSE1, {"E1_MOEDA"  , 1, Nil})
+					aadd(aVetSE1, {"E1_PRODUTO", cProduto, Nil})
+					aadd(aVetSE1, {"E1_TIPIGPM", cTipIgpm, Nil})
+					aadd(aVetSE1, {"E1_NOMCLI" , cFanta, Nil})
+					aadd(aVetSE1, {"E1_RAZAO"  , cRazao, Nil})
+					aadd(aVetSE1, {"E1_DTIGPM" , cDtIgpm, Nil})
+					aadd(aVetSE1, {"E1_CONDPAG", cCond, Nil})
+					aadd(aVetSE1, {"E1_FIXVAR" , cFixVar, Nil})
+					aadd(aVetSE1, {"E1_INDICUS", 0, Nil})
+					aadd(aVetSE1, {"E1_VALOR"  , nValor, Nil})
+					aadd(aVetSE1, {"E1_SALDO"  , nValor, Nil})
+					aadd(aVetSE1, {"E1_VLCRUZ" , nValor, Nil})
+					aadd(aVetSE1, {"E1_ZZNUMOR", cTitulo, Nil})
+					aadd(aVetSE1, {"E1_ZZPRFOR", cPrefixo, Nil})
+					aadd(aVetSE1, {"E1_CONDDEF", cCond, Nil})
+					aadd(aVetSE1, {"E1_CVAF"   , 'A', Nil})
+					aadd(aVetSE1, {"E1_INCC"   , 'N', Nil})
+					aadd(aVetSE1, {"E1_EC05DB" , cEC05DB, Nil})
+					aadd(aVetSE1, {"E1_EC05CR" , cEC05CR, Nil})
+					aadd(aVetSE1, {"E1_SITUACA", '0', Nil})
+					aadd(aVetSE1, {"E1_STATUS" , 'A', Nil})
+					aadd(aVetSE1, {"E1_FLUXO"  , 'S', Nil})
+					aadd(aVetSE1, {"E1_FILORIG", cFilialAtual, Nil})
+					aadd(aVetSE1, {"E1_TPDESC" , 'C', Nil})
+					aadd(aVetSE1, {"E1_ORIGEM" , 'BROWSER', Nil})
+					aadd(aVetSE1, {"E1_ZZINDIC", cZZIndic, Nil})
+					If cSerie == "ADT" .OR. cSerie == "TRF"
+						SC6->(MsSeek(SD2->D2_FILIAL+SD2->D2_DOC+SD2->D2_SERIE))
+						aadd(aVetSE1, {"E1_ZZSECUR" , cSecuritizadora , Nil})
+						aadd(aVetSE1, {"E1_ZZSECVA" , SC6->C6_ZZSECVA , Nil})
+					Else
+						aadd(aVetSE1, {"E1_ZZSECUR" , cSecuritizadora, Nil})
+					EndIf
+					aadd(aVetSE1, {"E1_ZZPARCE" , cParceiro, Nil})
+
+					//Inicia o controle de transação
+					Begin Transaction
+						//Chama a rotina automática
+						lMsErroAuto := .F.
+						MSExecAuto({|x,y| FINA040(x,y)}, aVetSE1, 3)
+						
+						//Se houve erro, mostra o erro ao usuário e desarma a transação
+						If lMsErroAuto
+							MostraErro()
+							DisarmTransaction()
+						EndIf
+					//Finaliza a transação
+					End Transaction
+				Else
+					ApMsgInfo('Título: '+cPrefixo+'-'+cTitulo+'/'+cParcela+' já existe! Título desprezado.')
+				EndIf
+				(cTabelaTemporaria)->(DbSkip())
+			EndDo
+			DbSelectArea("ZZZ")
+			DbSetOrder(4)
+			//Filial+lote+propAtual
+			If (ZZZ->(MsSeek( xFilial("ZZZ") + cProduto + 'S')))
+				If ( ZZZ->ZZZ_CLIPRO != cCodigoCliente)
+					cCliOri := ZZZ->ZZZ_CLIPRO
+					cLojCliOri := ZZZ->ZZZ_LOJPRO
+					cPrefix := ZZZ->ZZZ_PREFIX
+					cNum := ZZZ->ZZZ_NUM
+					//Definindo o cliente anterior como proprietario atual N
+					Reclock("ZZZ",.F.)
+						ZZZ->ZZZ_FILIAL := ZZZ->ZZZ_FILIAL
+						ZZZ->ZZZ_CLIPRO := ZZZ->ZZZ_CLIPRO
+						ZZZ->ZZZ_LOJPRO := ZZZ->ZZZ_LOJPRO
+						ZZZ->ZZZ_CODPRO := ZZZ->ZZZ_CODPRO
+						ZZZ->ZZZ_PROATU := "N"
+					ZZZ->(MsUnlock())
+					
+					cSeq := Strzero(VAL(ZZZ->ZZZ_SEQUEN) + 1,2)
+					//Adicionando o cliente em questão como proprietario atual
+					Reclock("ZZZ",.T.)
+						ZZZ->ZZZ_FILIAL := xFilial("ZZZ")
+						ZZZ->ZZZ_CLIPRO := cCodigoCliente 
+						ZZZ->ZZZ_LOJPRO := cLojaCliente
+						ZZZ->ZZZ_CODPRO := cProduto
+						ZZZ->ZZZ_EMISSA := dDataBase
+						ZZZ->ZZZ_QUITAD := "N"
+						ZZZ->ZZZ_SEQUEN := cSeq
+						ZZZ->ZZZ_PROATU := "S" 
+						ZZZ->ZZZ_DOC    := cTitulo 
+						ZZZ->ZZZ_SERIE  := cPrefixo
+						ZZZ->ZZZ_CLIORI := cCliOri
+						ZZZ->ZZZ_LOJORI := cLojCliOri
+						ZZZ->ZZZ_PREFIX := cPrefix
+						ZZZ->ZZZ_NUM    := cNum   
+						ZZZ->ZZZ_TIPO   := "NF"
+						ZZZ->ZZZ_CONDPG := cCondicaoPagamento
+					ZZZ->(MsUnlock())
+
+					
+
+				EndIf
+			EndIf
+			MV_PAR01 := 1
+			MV_PAR02 := cCodigoCliente
+			MV_PAR03 := cCodigoCliente
+			MV_PAR04 := cProduto
+			MV_PAR05 := cProduto
+			MV_PAR06 := 2
+			MV_PAR07 := 1
+			u_THOFIN26()
+			
+			oDlgMk:end()
+		endif
+		
+	Endif
+Return 
+
+/*/{Protheus.doc} AtualizaValor
+	Funcao para mostrar os valores de entrada e do total das parcelas
+	@type  Static Function
+	@author user
+	@since 27/06/2025
+	@version version
+	@return cHtml, character, Html a ser retornado
+/*/
+Static Function AtualizaValor(cAcao as character) as logical
+
+	Local cEntrada       as character
+	Local cTotalParcelas as character
+
+	cEntrada := Transform(nEntrada,'@E 999,999,999.99')
+	nTotalParcelas := 0
+	(cTabelaTemporaria)->(DbGoTop())
+	while !((cTabelaTemporaria)->(EOF()))
+		nTotalParcelas += (cTabelaTemporaria)->VALOR
+		(cTabelaTemporaria)->(DbSkip())
+	end
+	cTotalParcelas := Transform(nTotalParcelas,'@E 999,999,999.99')
+	nTotalParcelas += nEntrada
+	cTotal := Transform(nTotalParcelas,'@E 999,999,999.99')
+
+	cTituloEntrada := '<font size="3" color="black">Entrada:</font">'
+	cValorEntrada  := '<font size="3" color="black"> R$'+cEntrada+'</font">'
+	cTituloPedido  := '<font size="3" color="black">Valor Pedido:</font">'
+	cValorPedido   := '<font size="3" color="black"> R$'+Transform(nTotalPedido,'@E 999,999,999.99')+'</font">'
+	cTituloParcela := '<font size="3" color="black">Total Parcelas:</font">'
+	cValorParcela  := '<font size="3" color="black"> R$'+cTotalParcelas+'</font">'
+	cTituloProduto := '<font size="3" color="black">Total:</font">'
+	cValorProduto  := '<font size="3" color="black"> R$'+cTotal+'</font>'
+	(cTabelaTemporaria)->(DbGoTop())
+
+	if (cAcao == "Browser")
+		oBrowse:Refresh(.T.)
+	endif
+
+Return .T.
+
+/*/{Protheus.doc} Perguntas
+	funcao contendo as perguntas utilizadas na rotina
+	@type  Static Function
+	@author Jose Vitor Rodrigues
+	@since 26/06/2025
+	@version 1.0
+	@return return_var, logical, retorna se foi confirmado as perguntas ou não
+/*/
+Static Function Perguntas() as logical
+	Local return_var             := .F.                                as logical
+	Local cTamanhoDocumentoSaida := Space(Len(AvKey("","E1_NUM")))     as character
+	Local cTamanhoPrefixo        := Space(Len(AvKey("","E1_PREFIXO"))) as character
+	Local cTamanhoSecuritizadora := Space(Len(AvKey("","E1_ZZSECUR"))) as character
+	Local cTamanhoParceiro       := Space(Len(AvKey("","E1_ZZPARCE"))) as character
+	Local aPergs := {} 												   as array
+	Local lSair := .F.												   as logical
+
+	aadd(aPergs, {2, "Tipo"               , Space(1)              , {"1=Fixo", "2=Variado"}, 122         , ".T.", .T.})
+    aadd(aPergs, {1, "Documento de Saida:", cTamanhoDocumentoSaida, ""                     , ".T."       , "SF201"    , ".T.", 025, .T.})
+    aadd(aPergs, {1, "PREFIXO/Série"      , cTamanhoPrefixo       , ""                     , ".T."       , ""   	  , ".T.", 010, .T.})
+    aadd(aPergs, {1, "Quantidade Parcelas", 0                     , "@E 999"               , "Positivo()", ""   	  , ".T.", 010, .T.})
+    aadd(aPergs, {1, "Vencto 1° Parcela"  , Date()                , ""                     , ".T."       , ""   	  , ".T.", 070, .T.})
+    aadd(aPergs, {1, "Valor 1° Parcela"   , 0                     , "@E 999,999,999.99"    , "Positivo()", ""   	  , ".T.", 060, .T.})
+	aadd(aPergs, {1, "Securitizadora"     , cTamanhoSecuritizadora, ""                     , ".T."       , ""   	  , ".T.", 040, .F.})
+	aadd(aPergs, {1, "Parceiro"           , cTamanhoParceiro      , ""                     , ".T."       , ""   	  , ".T.", 040, .F.})
+
+	While lSair == .F.
+		If ParamBox(aPergs, "Informe os parâmetros", /*aRet*/, /*bOK*/, /*aButtons*/, /*lCentered*/, /*nPosX*/, /*nPosY*/, /*oDlgWizard*/, /*cLoad*/, .F., .F.)
+			cTipoFV             := IF( MV_PAR01 == "1", "F", "V")
+			cDocumentoSaida     := MV_PAR02
+			cPrefixo            := MV_PAR03
+			nQuantidadeParcelas := MV_PAR04
+			dVencimento         := MV_PAR05
+			nValor              := MV_PAR06
+			cSecuritizadora     := UPPER(MV_PAR07)
+			cParceiro           := UPPER(MV_PAR08)
+			DbSelectArea("SF2")
+			DbSetOrder(1)
+			If !MsSeek(xFilial("SF2")+cDocumentoSaida+cPrefixo,.t.)
+				MsgStop("Não foi encontrado o documento informado no parâmetro!"+CRLF+"Verifique-os e preencha novamente","ATENÇÃO")
+				MV_PAR02 := cDocumentoSaida     
+				MV_PAR03 := cPrefixo            
+				MV_PAR04 := nQuantidadeParcelas 
+				MV_PAR05 := dVencimento         
+				MV_PAR06 := nValor              
+				MV_PAR07 := UPPER(cSecuritizadora)     
+				MV_PAR08 := UPPER(cParceiro)           
+			Else
+
+				DbSelectArea("SD2")
+				SD2->(DbSetOrder(3))
+				SD2->(MsSeek(xFilial("SD2") + cDocumentoSaida + SF2->F2_SERIE))
+				cProduto := SD2->D2_COD
+				cPedido  := SD2->D2_PEDIDO
+				DbSelectArea("SC5")
+				SC5->(DbSetOrder(1))
+				SC5->(MsSeek(xFilial("SC5") + cPedido))
+				Do Case
+					Case SC5->C5_ZZINDIC == "1"; cIndiceParcela := "1 - IPCA"; cTipoFV := "V"
+					Case SC5->C5_ZZINDIC == "2"; cIndiceParcela := "2 - IGPM"; cTipoFV := "V"
+					Case SC5->C5_ZZINDIC == "3"; cIndiceParcela := "3 - INCC"; cTipoFV := "V"
+					Case SC5->C5_ZZINDIC == "5"; cIndiceParcela := "5 - IPC-DI"; cTipoFV := "V"
+					Case SC5->C5_ZZINDIC == "6"; cIndiceParcela := "6 - FIXA"; cTipoFV := "F"
+					Otherwise;                   cIndiceParcela := SC5->C5_ZZINDIC
+				EndCase
+				cQuery := "SELECT SUM(E1_VALOR) VALENTRADA FROM "+retSQLName("SE1")+" WHERE E1_FILIAL = "+xFilial("SE1")+" AND E1_NUM = '"+cDocumentoSaida+"' AND E1_PREFIXO = '"+cPrefixo+"' AND E1_PARCELA LIKE '%E%' AND D_E_L_E_T_ = '' "
+    			TCQuery cQuery New Alias "ENTRADA"
+
+				nEntrada := if(ENTRADA->(!EOF()), ENTRADA->VALENTRADA,0)
+
+				cQuery := "SELECT SUM(C6_VALOR) TOTALG FROM "+retSQLName("SC6")+" WHERE C6_FILIAL = "+xFilial("SC6")+" AND C6_NUM = '"+cPedido+"' AND D_E_L_E_T_ = '' "
+    			TCQuery cQuery New Alias "C6TOTAL"
+				nTotalPedido := C6TOTAL->TOTALG
+				ENTRADA->(dbCloseArea())
+				C6TOTAL->(dbCloseArea())
+				SC5->(dbCloseArea())
+				SD2->(dbCloseArea())
+				lSair := .T.
+			endif
+			SF2->(dbCloseArea())
+			return_var := .T.
+		Else
+			lSair := .T.
+			return_var := .F.
+		EndIf
+	endDo
+Return return_var
